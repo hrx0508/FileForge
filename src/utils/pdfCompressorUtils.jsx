@@ -1,14 +1,35 @@
 import { isPdfFile, calcSavedPercent } from "./fileUtils";
 
+let gsScriptPromise = null;
+
+// Loads /gs.js once. It defines a global `createModule` function.
+function loadGhostscriptScript() {
+  if (window.createModule) return Promise.resolve();
+  if (!gsScriptPromise) {
+    gsScriptPromise = new Promise((resolve, reject) => {
+      const script = document.createElement("script");
+      script.src = "/gs.js";
+      script.onload = resolve;
+      script.onerror = () => {
+        gsScriptPromise = null;
+        reject(new Error("Could not load the PDF engine (gs.js)."));
+      };
+      document.head.appendChild(script);
+    });
+  }
+  return gsScriptPromise;
+}
+
 async function runGhostscript(inputBytes, { preset, dpi }) {
-  const [{ default: createGs }, { default: wasmUrl }] = await Promise.all([
-    import("@jspawn/ghostscript-wasm"),
-    import("@jspawn/ghostscript-wasm/gs.wasm?url"),
-  ]);
+  await loadGhostscriptScript();
+
+  if (typeof window.createModule !== "function") {
+    throw new Error("PDF engine failed to initialise (createModule missing).");
+  }
 
   // Fresh instance per run: Ghostscript's runtime exits after callMain
-  const gs = await createGs({
-    locateFile: (path) => (path.endsWith(".wasm") ? wasmUrl : path),
+  const gs = await window.createModule({
+    locateFile: (path) => (path.endsWith(".wasm") ? "/gs.wasm" : path),
     print: () => {},
     printErr: () => {},
   });
