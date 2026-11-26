@@ -1,23 +1,25 @@
 import { useEffect, useRef, useState } from "react";
-import { FileText, Loader2, RotateCcw } from "lucide-react";
+import { FileText, Loader2 } from "lucide-react";
 
 import Hero from "../components/Hero";
 import DropZone from "../components/DropZone";
 import SelectedFiles from "../components/SelectedFiles";
-import Segmented from "../components/Segmented";
+import Field from "../components/Field";
+import CompressionLevel from "../components/CompressionLevel";
 import TargetSize, { toTargetKB } from "../components/TargetSize";
-import Stats from "../components/Stats";
 import ResultsTable from "../components/ResultsTable";
 
 import { compressPdf } from "../utils/pdfCompressorUtils";
 import { filterPdfFiles, revokeObjectUrl } from "../utils/fileUtils";
 import { usePageTitle } from "../hooks/usePageTitle";
 
-const PRESETS = [
-  { value: 30, label: "Smallest", hint: "Strongest compression. Images drop to about 90 DPI, fine for screens." },
-  { value: 60, label: "Balanced", hint: "Good size reduction with images that still look clean." },
-  { value: 90, label: "Best quality", hint: "Light compression. Good for documents you may print." },
+const LEVELS = [
+  { value: 90, label: "Basic", hint: "(−30%)" },
+  { value: 60, label: "Balanced", hint: "(−50%)" },
+  { value: 30, label: "Strong", hint: "(−70%)" },
 ];
+
+const MAX_MB = 50;
 
 function PdfCompressor() {
   usePageTitle("Compress PDFs");
@@ -40,17 +42,23 @@ function PdfCompressor() {
 
   const addFiles = (files) => {
     setError("");
-    const pdfFiles = filterPdfFiles(files);
+    const valid = filterPdfFiles(files);
 
-    if (!pdfFiles.length) {
+    if (!valid.length) {
       setError("Please select valid PDF files.");
       return;
     }
 
+    const ok = valid.filter((f) => f.size <= MAX_MB * 1024 * 1024);
+    if (ok.length < valid.length) {
+      setError(`Some files are over ${MAX_MB} MB and were skipped.`);
+    }
+    if (!ok.length) return;
+
     setSelectedFiles((current) => {
       const keyOf = (f) => `${f.name}-${f.size}-${f.lastModified}`;
       const existing = new Set(current.map(keyOf));
-      return [...current, ...pdfFiles.filter((f) => !existing.has(keyOf(f)))];
+      return [...current, ...ok.filter((f) => !existing.has(keyOf(f)))];
     });
   };
 
@@ -78,7 +86,7 @@ function PdfCompressor() {
       for (const file of selectedFiles) {
         compressed.push(await compressPdf(file, quality, targetKB));
       }
-      setResults((current) => [...current, ...compressed]);
+      setResults((current) => [...compressed, ...current]);
       setSelectedFiles([]);
     } catch (err) {
       console.error(err);
@@ -96,7 +104,6 @@ function PdfCompressor() {
     });
   };
 
-  const activePreset = PRESETS.find((p) => p.value === quality);
   const alreadySmaller =
     targetKB && selectedFiles.some((f) => f.size <= targetKB * 1024);
 
@@ -104,106 +111,95 @@ function PdfCompressor() {
     <>
       <Hero type="pdf" />
 
-      <main className="mx-auto w-[92%] max-w-[900px] pb-20">
-        <section className="card p-5 sm:p-6">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleCompress();
-            }}
-          >
-            <DropZone
-              accept="application/pdf,.pdf"
-              title="Drop PDFs here"
-              description="Add one or more PDF files."
-              onFiles={addFiles}
-            />
+      <main className="mx-auto w-[92%] max-w-[1000px] pb-20 pt-6">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleCompress();
+          }}
+        >
+          <DropZone
+            accept="application/pdf,.pdf"
+            title="Drag & drop your PDF here"
+            hint={`Supports: PDF files  •  Max size: ${MAX_MB}MB`}
+            buttonLabel="Choose File"
+            onFiles={addFiles}
+          />
 
-            {error && (
-              <div
-                className="mt-4 rounded-xl px-4 py-3 text-sm"
-                style={{ background: "var(--danger-soft)", color: "var(--danger)" }}
-                role="alert"
-              >
-                {error}
-              </div>
-            )}
-
-            <SelectedFiles
-              files={selectedFiles}
-              icon={FileText}
-              onRemove={removeSelectedFile}
-              onClear={() => setSelectedFiles([])}
-            />
-
-            <div className="mt-5">
-              <TargetSize {...target} onChange={setTarget} />
-              {alreadySmaller && (
-                <p className="mt-2 text-xs" style={{ color: "var(--warn)" }}>
-                  Some files are already under this size. Compression can&apos;t
-                  make a file bigger.
-                </p>
-              )}
+          {error && (
+            <div
+              className="mt-4 rounded-xl px-4 py-3 text-sm"
+              style={{ background: "var(--danger-soft)", color: "var(--danger)" }}
+              role="alert"
+            >
+              {error}
             </div>
+          )}
 
-            <div className="mt-5">
-              <div className="mb-2 text-xs font-medium text-[var(--muted)]">
-                Compression level
-              </div>
-              <Segmented
-                options={PRESETS}
+          <SelectedFiles
+            files={selectedFiles}
+            icon={FileText}
+            onRemove={removeSelectedFile}
+            onClear={() => setSelectedFiles([])}
+          />
+
+          <div className="mt-5 grid gap-4 md:grid-cols-2">
+            <Field
+              label="Compression Level"
+              info="Stronger levels downsample embedded images more. Text and vectors are kept."
+            >
+              <CompressionLevel
+                options={LEVELS}
                 value={quality}
                 onChange={setQuality}
                 disabled={!!targetKB}
               />
-              <p className="mt-2 text-xs text-[var(--muted)]">
-                {targetKB
-                  ? "Ignored while a size is set. The tool tries stronger levels until it fits."
-                  : activePreset?.hint}
-              </p>
-            </div>
+            </Field>
 
-            <p className="mt-5 rounded-xl bg-[var(--surface-soft)] px-4 py-3 text-xs leading-5 text-[var(--muted)]">
-              Text and vector graphics are kept as they are. Only embedded images
-              are recompressed, so PDFs that are mostly text may shrink very
-              little. Password-protected PDFs can&apos;t be processed.
+            <Field
+              label="Target Size (Optional)"
+              info="The tool retries with stronger image downsampling until the file fits."
+            >
+              <TargetSize {...target} onChange={setTarget} />
+            </Field>
+          </div>
+
+          <p className="mt-3 text-xs text-[var(--muted)]">
+            Text and vector graphics stay sharp. Only embedded images are recompressed, so
+            text-only PDFs may shrink very little.
+          </p>
+
+          {alreadySmaller && (
+            <p className="mt-2 text-xs" style={{ color: "var(--warn)" }}>
+              Some files are already under this size. Compression can&apos;t make a file
+              bigger.
             </p>
+          )}
 
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <button
-                type="submit"
-                disabled={!selectedFiles.length || isCompressing}
-                className="btn btn-primary flex-1"
-              >
-                {isCompressing ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    Compressing…
-                  </>
-                ) : (
-                  "Compress PDFs"
-                )}
-              </button>
+          {selectedFiles.length > 0 && (
+            <button
+              type="submit"
+              disabled={isCompressing}
+              className="btn btn-primary mt-5 w-full !py-3.5"
+            >
+              {isCompressing ? (
+                <>
+                  <Loader2 size={17} className="animate-spin" />
+                  Compressing…
+                </>
+              ) : (
+                `Compress ${selectedFiles.length > 1 ? `${selectedFiles.length} PDFs` : "PDF"}`
+              )}
+            </button>
+          )}
+        </form>
 
-              <button
-                type="button"
-                onClick={clearAll}
-                disabled={!selectedFiles.length && !results.length}
-                className="btn btn-ghost"
-              >
-                <RotateCcw size={15} />
-                Reset
-              </button>
-            </div>
-          </form>
-        </section>
-
-        {results.length > 0 && (
-          <>
-            <Stats results={results} type="pdf" />
-            <ResultsTable results={results} type="pdf" onDelete={deleteResult} />
-          </>
-        )}
+        <ResultsTable
+          results={results}
+          type="pdf"
+          onDelete={deleteResult}
+          onReset={clearAll}
+        />
 
         <p className="mt-8 text-center text-xs text-[var(--muted)]">
           Your PDFs never leave your device.

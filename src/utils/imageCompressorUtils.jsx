@@ -109,11 +109,14 @@ async function fitToTarget(img, width, height, format, targetBytes) {
 
 export async function compressImage(
   file,
-  { quality = 80, format = "image/webp", maxWidth = "original", targetSizeKB = null } = {}
+  { quality = 80, format = "original", maxWidth = "original", targetSizeKB = null } = {}
 ) {
   if (!isImageFile(file)) {
     throw new Error(`${file?.name || "File"} is not a supported image (JPG, PNG, WebP).`);
   }
+
+  // "original" keeps the file's own format
+  const outFormat = format === "original" ? file.type : format;
 
   const img = await loadImage(file);
 
@@ -132,23 +135,21 @@ export async function compressImage(
   let targetMet = null;
 
   if (targetSizeKB) {
-    const result = await fitToTarget(img, width, height, format, targetSizeKB * 1024);
+    const result = await fitToTarget(img, width, height, outFormat, targetSizeKB * 1024);
     blob = result.blob;
     width = result.width;
     height = result.height;
     targetMet = result.targetMet;
   } else {
     const q = Math.min(1, Math.max(0.1, Number(quality) / 100));
-    blob = await render(img, width, height, format, q);
+    blob = await render(img, width, height, outFormat, q);
 
-    // Same format, no resize, and bigger than the original: keep the original
     if (!resized && blob.type === file.type && blob.size >= file.size) {
       blob = file;
     }
   }
 
-  // Some browsers silently fall back to PNG if they can't encode the format
-  const actualFormat = EXTENSIONS[blob.type] ? blob.type : format;
+  const actualFormat = EXTENSIONS[blob.type] ? blob.type : outFormat;
   const baseName = file.name.replace(/\.[^/.]+$/, "");
 
   return {
@@ -161,7 +162,7 @@ export async function compressImage(
     width,
     height,
     format: actualFormat,
-    targetMet, // null when no target was set
+    targetMet,
     url: URL.createObjectURL(blob),
   };
 }

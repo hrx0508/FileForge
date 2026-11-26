@@ -1,9 +1,10 @@
 import { lazy, Suspense } from "react";
-import { Navigate, Outlet, Route, Routes } from "react-router-dom";
+import { Outlet, Route, Routes } from "react-router-dom";
 import { Loader2 } from "lucide-react";
 
 import Navbar from "../components/Navbar";
 
+const Home = lazy(() => import("../pages/Home"));
 const ImageCompressor = lazy(() => import("../pages/ImageCompressor"));
 const PdfCompressor = lazy(() => import("../pages/PdfCompressor"));
 const NotFound = lazy(() => import("../pages/NotFound"));
@@ -31,7 +32,7 @@ function AppRoutes({ theme, onToggleTheme }) {
   return (
     <Routes>
       <Route element={<Layout theme={theme} onToggleTheme={onToggleTheme} />}>
-        <Route index element={<Navigate to="/image-compressor" replace />} />
+        <Route index element={<Home />} />
         <Route path="/image-compressor" element={<ImageCompressor />} />
         <Route path="/pdf-compressor" element={<PdfCompressor />} />
         <Route path="*" element={<NotFound />} />

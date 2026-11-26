@@ -1,50 +1,62 @@
-import { FileImage, FileText, Moon, ShieldCheck, Sun } from "lucide-react";
-import { NavLink } from "react-router-dom";
+import { Home, Moon, Sun } from "lucide-react";
+import { Link, NavLink, useLocation } from "react-router-dom";
+import Logo from "./Logo";
 
 const linkClass = ({ isActive }) =>
-  `flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition ${
+  `flex items-center gap-1.5 border-b-2 px-1 py-2 text-sm font-medium transition ${
     isActive
-      ? "bg-[var(--accent-soft)] text-[var(--accent-text)]"
-      : "text-[var(--muted)] hover:text-[var(--text)]"
+      ? "border-[var(--accent)] text-[var(--accent-text)]"
+      : "border-transparent text-[var(--muted)] hover:text-[var(--text)]"
   }`;
 
 function Navbar({ theme, onToggleTheme }) {
-  const next = theme === "light" ? "dark" : "light";
+  const { pathname } = useLocation();
+  const isHome = pathname === "/";
+
+  const choose = (next) => {
+    if (theme !== next) onToggleTheme();
+  };
 
   return (
-    <header className="sticky top-0 z-50 border-b border-[var(--border)] bg-[var(--header-bg)] backdrop-blur">
-      <div className="mx-auto flex h-16 w-[92%] max-w-[900px] items-center justify-between gap-3">
-        <NavLink to="/image-compressor" className="flex items-center gap-2.5">
-          <div className="grid h-8 w-8 place-items-center rounded-lg bg-[var(--accent)] text-[var(--on-accent)]">
-            <FileImage size={17} />
-          </div>
-          <span className="text-base font-bold tracking-tight">FileForge</span>
-        </NavLink>
+    <header className="sticky top-0 z-50 backdrop-blur" style={{ background: "var(--header-bg)" }}>
+      <div className="mx-auto flex h-16 w-[92%] max-w-[1000px] items-center justify-between gap-3">
+        <Link to="/" aria-label="FileForge home">
+          <Logo />
+        </Link>
 
-        <nav className="flex items-center gap-1">
-          <NavLink to="/image-compressor" className={linkClass}>
-            <FileImage size={15} />
-            Images
-          </NavLink>
-          <NavLink to="/pdf-compressor" className={linkClass}>
-            <FileText size={15} />
-            PDF
-          </NavLink>
-        </nav>
+        {!isHome && (
+          <nav className="flex items-center gap-4 sm:gap-6">
+            <NavLink to="/" end className={linkClass}>
+              <Home size={15} />
+              <span className="hidden sm:inline">Home</span>
+            </NavLink>
+            <NavLink to="/image-compressor" className={linkClass}>
+              <span className="sm:hidden">Images</span>
+              <span className="hidden sm:inline">Image Compress</span>
+            </NavLink>
+            <NavLink to="/pdf-compressor" className={linkClass}>
+              <span className="sm:hidden">PDF</span>
+              <span className="hidden sm:inline">PDF Compress</span>
+            </NavLink>
+          </nav>
+        )}
 
-        <div className="flex items-center gap-2">
-          <div className="hidden items-center gap-1.5 text-xs font-medium text-[var(--muted)] md:flex">
-            <ShieldCheck size={14} />
-            Private &amp; local
-          </div>
+        <div className="theme-toggle" role="group" aria-label="Theme">
           <button
             type="button"
-            onClick={onToggleTheme}
-            className="grid h-9 w-9 place-items-center rounded-lg border border-[var(--border)] text-[var(--muted)] transition hover:text-[var(--text)]"
-            aria-label={`Switch to ${next} theme`}
-            title={`Switch to ${next} theme`}
+            aria-pressed={theme === "light"}
+            aria-label="Light theme"
+            onClick={() => choose("light")}
           >
-            {theme === "light" ? <Moon size={16} /> : <Sun size={16} />}
+            <Sun size={16} />
+          </button>
+          <button
+            type="button"
+            aria-pressed={theme === "dark"}
+            aria-label="Dark theme"
+            onClick={() => choose("dark")}
+          >
+            <Moon size={16} />
           </button>
         </div>
       </div>

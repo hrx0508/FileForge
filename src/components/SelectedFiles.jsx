@@ -5,7 +5,7 @@ function SelectedFiles({ files, icon: Icon, onRemove, onClear }) {
   if (!files.length) return null;
 
   return (
-    <div className="card mt-4 p-4">
+    <div className="panel mt-4">
       <div className="mb-2 flex items-center justify-between">
         <span className="text-sm font-semibold">
           {files.length} file{files.length !== 1 ? "s" : ""} selected

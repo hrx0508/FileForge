@@ -1,34 +1,40 @@
 import { useEffect, useRef, useState } from "react";
-import { Image as ImageIcon, Loader2, RotateCcw } from "lucide-react";
+import { Image as ImageIcon, Loader2 } from "lucide-react";
 
 import Hero from "../components/Hero";
 import DropZone from "../components/DropZone";
 import SelectedFiles from "../components/SelectedFiles";
-import Segmented from "../components/Segmented";
+import Field from "../components/Field";
+import CompressionLevel from "../components/CompressionLevel";
 import TargetSize, { toTargetKB } from "../components/TargetSize";
-import Stats from "../components/Stats";
 import ResultsTable from "../components/ResultsTable";
 
 import { compressImage } from "../utils/imageCompressorUtils";
 import { filterImageFiles, revokeObjectUrl } from "../utils/fileUtils";
 import { usePageTitle } from "../hooks/usePageTitle";
 
+const LEVELS = [
+  { value: 40, label: "Low", hint: "(−70%)" },
+  { value: 65, label: "Balanced", hint: "(−50%)" },
+  { value: 85, label: "High", hint: "(−30%)" },
+];
+
 const FORMATS = [
+  { value: "original", label: "Keep Original" },
   { value: "image/webp", label: "WebP" },
   { value: "image/jpeg", label: "JPEG" },
   { value: "image/png", label: "PNG" },
 ];
 
-const WIDTHS = ["original", "2560", "1920", "1600", "1280", "1024", "800"];
+const MAX_MB = 10;
 
 function ImageCompressor() {
   usePageTitle("Compress Images");
 
   const [selectedFiles, setSelectedFiles] = useState([]);
   const [results, setResults] = useState([]);
-  const [quality, setQuality] = useState(80);
-  const [format, setFormat] = useState("image/webp");
-  const [maxWidth, setMaxWidth] = useState("original");
+  const [quality, setQuality] = useState(65);
+  const [format, setFormat] = useState("original");
   const [target, setTarget] = useState({ enabled: false, amount: "", unit: "KB" });
   const [isCompressing, setIsCompressing] = useState(false);
   const [error, setError] = useState("");
@@ -44,17 +50,23 @@ function ImageCompressor() {
 
   const addFiles = (files) => {
     setError("");
-    const imageFiles = filterImageFiles(files);
+    const valid = filterImageFiles(files);
 
-    if (!imageFiles.length) {
+    if (!valid.length) {
       setError("Please select JPG, PNG or WebP images.");
       return;
     }
 
+    const ok = valid.filter((f) => f.size <= MAX_MB * 1024 * 1024);
+    if (ok.length < valid.length) {
+      setError(`Some files are over ${MAX_MB} MB and were skipped.`);
+    }
+    if (!ok.length) return;
+
     setSelectedFiles((current) => {
       const keyOf = (f) => `${f.name}-${f.size}-${f.lastModified}`;
       const existing = new Set(current.map(keyOf));
-      return [...current, ...imageFiles.filter((f) => !existing.has(keyOf(f)))];
+      return [...current, ...ok.filter((f) => !existing.has(keyOf(f)))];
     });
   };
 
@@ -84,12 +96,12 @@ function ImageCompressor() {
           await compressImage(file, {
             quality,
             format,
-            maxWidth,
+            maxWidth: "original",
             targetSizeKB: targetKB,
           })
         );
       }
-      setResults((current) => [...current, ...compressed]);
+      setResults((current) => [...compressed, ...current]);
       setSelectedFiles([]);
     } catch (err) {
       console.error(err);
@@ -107,145 +119,118 @@ function ImageCompressor() {
     });
   };
 
-  const isLossless = format === "image/png";
   const alreadySmaller =
     targetKB && selectedFiles.some((f) => f.size <= targetKB * 1024);
+  const pngNote =
+    format === "image/png" ||
+    (format === "original" && selectedFiles.some((f) => f.type === "image/png"));
 
   return (
     <>
       <Hero type="image" />
 
-      <main className="mx-auto w-[92%] max-w-[900px] pb-20">
-        <section className="card p-5 sm:p-6">
-          <form
-            onSubmit={(e) => {
-              e.preventDefault();
-              handleCompress();
-            }}
-          >
-            <DropZone
-              accept="image/jpeg,image/png,image/webp"
-              title="Drop images here"
-              description="JPG, PNG or WebP. Add as many as you like."
-              onFiles={addFiles}
-            />
+      <main className="mx-auto w-[92%] max-w-[1000px] pb-20 pt-6">
+        <form
+          onSubmit={(e) => {
+            e.preventDefault();
+            handleCompress();
+          }}
+        >
+          <DropZone
+            accept="image/jpeg,image/png,image/webp"
+            title="Drag & drop your images here"
+            hint={`Supports: JPG, PNG, WEBP  •  Max size: ${MAX_MB}MB`}
+            onFiles={addFiles}
+          />
 
-            {error && (
-              <div
-                className="mt-4 rounded-xl px-4 py-3 text-sm"
-                style={{ background: "var(--danger-soft)", color: "var(--danger)" }}
-                role="alert"
-              >
-                {error}
-              </div>
-            )}
+          {error && (
+            <div
+              className="mt-4 rounded-xl px-4 py-3 text-sm"
+              style={{ background: "var(--danger-soft)", color: "var(--danger)" }}
+              role="alert"
+            >
+              {error}
+            </div>
+          )}
 
-            <SelectedFiles
-              files={selectedFiles}
-              icon={ImageIcon}
-              onRemove={removeSelectedFile}
-              onClear={() => setSelectedFiles([])}
-            />
+          <SelectedFiles
+            files={selectedFiles}
+            icon={ImageIcon}
+            onRemove={removeSelectedFile}
+            onClear={() => setSelectedFiles([])}
+          />
 
-            <div className="mt-5">
+          <div className="mt-5 grid gap-4 lg:grid-cols-3">
+            <Field
+              label="Compression Level"
+              info="Higher compression gives smaller files with lower quality. Actual savings vary by image."
+            >
+              <CompressionLevel
+                options={LEVELS}
+                value={quality}
+                onChange={setQuality}
+                disabled={!!targetKB}
+              />
+            </Field>
+
+            <Field
+              label="Target Size (Optional)"
+              info="Enter the size you want. The tool lowers quality, then dimensions, until it fits."
+            >
               <TargetSize {...target} onChange={setTarget} />
-              {alreadySmaller && (
-                <p className="mt-2 text-xs" style={{ color: "var(--warn)" }}>
-                  Some files are already under this size. Compression can&apos;t
-                  make a file bigger.
+            </Field>
+
+            <Field label="Format" info="Choose the output format for all images.">
+              <select
+                value={format}
+                onChange={(e) => setFormat(e.target.value)}
+                className="input"
+              >
+                {FORMATS.map((f) => (
+                  <option key={f.value} value={f.value}>
+                    {f.label}
+                  </option>
+                ))}
+              </select>
+              {pngNote && (
+                <p className="mt-2 text-xs text-[var(--muted)]">
+                  PNG stays lossless, so choose WebP for smaller files.
                 </p>
               )}
-            </div>
+            </Field>
+          </div>
 
-            <div className="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
-              <div>
-                <div className="mb-2 flex items-center justify-between text-xs font-medium text-[var(--muted)]">
-                  <span>Quality</span>
-                  <span className="text-[var(--text)]">
-                    {targetKB ? "Auto" : isLossless ? "Lossless" : `${quality}%`}
-                  </span>
-                </div>
-                <input
-                  type="range"
-                  min="10"
-                  max="100"
-                  value={quality}
-                  disabled={isLossless || !!targetKB}
-                  onChange={(e) => setQuality(Number(e.target.value))}
-                  className="range"
-                />
-                <p className="mt-1.5 text-xs text-[var(--muted)]">
-                  {targetKB
-                    ? "Chosen automatically to fit your size."
-                    : isLossless
-                    ? "PNG ignores quality."
-                    : "Lower = smaller file."}
-                </p>
-              </div>
+          {alreadySmaller && (
+            <p className="mt-3 text-xs" style={{ color: "var(--warn)" }}>
+              Some files are already under this size. Compression can&apos;t make a file
+              bigger.
+            </p>
+          )}
 
-              <div>
-                <div className="mb-2 text-xs font-medium text-[var(--muted)]">
-                  Format
-                </div>
-                <Segmented options={FORMATS} value={format} onChange={setFormat} />
-                <p className="mt-1.5 text-xs text-[var(--muted)]">
-                  WebP is usually the smallest.
-                </p>
-              </div>
+          {selectedFiles.length > 0 && (
+            <button
+              type="submit"
+              disabled={isCompressing}
+              className="btn btn-primary mt-5 w-full !py-3.5"
+            >
+              {isCompressing ? (
+                <>
+                  <Loader2 size={17} className="animate-spin" />
+                  Compressing…
+                </>
+              ) : (
+                `Compress ${selectedFiles.length > 1 ? `${selectedFiles.length} images` : "image"}`
+              )}
+            </button>
+          )}
+        </form>
 
-              <div>
-                <div className="mb-2 text-xs font-medium text-[var(--muted)]">
-                  Max width
-                </div>
-                <select
-                  value={maxWidth}
-                  onChange={(e) => setMaxWidth(e.target.value)}
-                  className="input"
-                >
-                  {WIDTHS.map((w) => (
-                    <option key={w} value={w}>
-                      {w === "original" ? "Original size" : `${w}px`}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="mt-6 flex flex-col gap-3 sm:flex-row">
-              <button
-                type="submit"
-                disabled={!selectedFiles.length || isCompressing}
-                className="btn btn-primary flex-1"
-              >
-                {isCompressing ? (
-                  <>
-                    <Loader2 size={16} className="animate-spin" />
-                    Compressing…
-                  </>
-                ) : (
-                  "Compress images"
-                )}
-              </button>
-
-              <button
-                type="button"
-                onClick={clearAll}
-                disabled={!selectedFiles.length && !results.length}
-                className="btn btn-ghost"
-              >
-                <RotateCcw size={15} />
-                Reset
-              </button>
-            </div>
-          </form>
-        </section>
-
-        {results.length > 0 && (
-          <>
-            <Stats results={results} type="image" />
-            <ResultsTable results={results} type="image" onDelete={deleteResult} />
-          </>
-        )}
+        <ResultsTable
+          results={results}
+          type="image"
+          onDelete={deleteResult}
+          onReset={clearAll}
+        />
 
         <p className="mt-8 text-center text-xs text-[var(--muted)]">
           Your images never leave your device.
